@@ -4,6 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, FileResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.staticfiles import StaticFiles
 from PIL import Image
 import io
 
@@ -363,6 +364,12 @@ def serve_pet_image(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(404)
     return FileResponse(file_path, media_type="image/webp")
+
+
+# ── Serve frontend static files ──
+
+FRONTEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
 # ── Startup ──
