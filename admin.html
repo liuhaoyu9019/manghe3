@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台 · 石器时代盲盒</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #0a0a1a;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+.header {
+  display: flex; align-items: center; padding: 16px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  gap: 12px;
+}
+.header h1 { font-size: 18px; color: #fff; }
+.header .sub { font-size: 12px; color: rgba(255,255,255,0.3); margin-left: auto; }
+.nav-tabs {
+  display: flex; gap: 0; padding: 0 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.nav-tab {
+  padding: 12px 20px; border: none; background: none;
+  color: rgba(255,255,255,0.4); font-size: 13px; font-weight: 600;
+  cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;
+}
+.nav-tab:hover { color: rgba(255,255,255,0.7); }
+.nav-tab.active { color: #a855f7; border-bottom-color: #a855f7; }
+.panel { display: none; padding: 24px; }
+.panel.active { display: block; }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+th { color: rgba(255,255,255,0.4); font-weight: 600; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+td { color: #ccc; }
+tr:hover td { background: rgba(255,255,255,0.03); }
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-common { background: rgba(74,222,128,0.15); color: #4ade80; }
+.badge-rare { background: rgba(96,165,250,0.15); color: #60a5fa; }
+.badge-legendary { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.num { font-weight: 700; font-size: 15px; }
+
+/* Stats row */
+.stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.stat-box {
+  flex: 1; min-width: 120px; padding: 16px 20px;
+  border-radius: 12px; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.stat-box .val { font-size: 28px; font-weight: 700; color: #fff; }
+.stat-box .lbl { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+.stat-box.gold { border-color: rgba(251,191,36,0.3); }
+.stat-box.gold .val { color: #fbbf24; }
+
+.admin-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  background: rgba(168,85,247,0.2); color: #a855f7;
+  font-size: 10px; font-weight: 700; margin-left: 6px;
+}
+
+/* Action buttons */
+.btn {
+  padding: 6px 14px; border-radius: 8px; border: none;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-danger { background: rgba(239,68,68,0.15); color: #ef4444; }
+.btn-danger:hover { background: rgba(239,68,68,0.25); }
+.btn-danger:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-primary { background: rgba(168,85,247,0.15); color: #a855f7; }
+.btn-primary:hover { background: rgba(168,85,247,0.25); }
+
+/* Loading */
+.loading { text-align: center; padding: 60px; color: rgba(255,255,255,0.3); }
+.spinner { width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.06); border-top-color: #a855f7; border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  padding: 10px 24px; border-radius: 12px; background: rgba(0,0,0,0.8);
+  backdrop-filter: blur(8px); color: #fff; font-size: 13px;
+  opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>⚙️ 管理后台</h1>
+  <span class="sub" id="status">检查连接中...</span>
+</div>
+
+<div class="nav-tabs">
+  <button class="nav-tab active" data-panel="overview">概览</button>
+  <button class="nav-tab" data-panel="pets">宠物管理</button>
+  <button class="nav-tab" data-panel="users">用户管理</button>
+  <button class="nav-tab" data-panel="log">操作日志</button>
+</div>
+
+<div class="panel active" id="panel-overview">
+  <div class="stats-row" id="overview-stats">
+    <div class="stat-box"><div class="val">-</div><div class="lbl">宠物总数</div></div>
+    <div class="stat-box"><div class="val">-</div><div class="lbl">用户总数</div></div>
+    <div class="stat-box"><div class="val">-</div><div class="lbl">今日抽卡</div></div>
+    <div class="stat-box gold"><div class="val">-</div><div class="lbl">已收集卡牌</div></div>
+  </div>
+</div>
+
+<div class="panel" id="panel-pets">
+  <div id="pets-loading" class="loading"><div class="spinner"></div><p>加载宠物数据...</p></div>
+  <div id="pets-table-wrap" style="display:none">
+    <table><thead><tr><th>ID</th><th>图片</th><th>名称</th><th>稀有度</th><th>操作</th></tr></thead><tbody id="pets-tbody"></tbody></table>
+  </div>
+</div>
+
+<div class="panel" id="panel-users">
+  <div id="users-loading" class="loading"><div class="spinner"></div><p>加载用户数据...</p></div>
+  <div id="users-table-wrap" style="display:none">
+    <table><thead><tr><th>ID</th><th>用户名</th><th>注册时间</th><th>收集数量</th><th>操作</th></tr></thead><tbody id="users-tbody"></tbody></table>
+  </div>
+</div>
+
+<div class="panel" id="panel-log">
+  <div style="color:rgba(255,255,255,0.3);font-size:13px;padding:40px 0;text-align:center">
+    <p>🔧 操作日志功能待实现</p>
+    <p style="margin-top:8px;font-size:12px">可通过 FastAPI 文档查看完整 API: <a href="/docs" target="_blank" style="color:#a855f7">/docs</a></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = `${window.location.protocol}//${window.location.hostname}:8000`;
+
+let toastTimer;
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+async function api(path, opts = {}) {
+  const resp = await fetch(`${API}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error?.message || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}
+
+// ── Tab switching ──
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+  });
+});
+
+// ── Overview ──
+async function loadOverview() {
+  try {
+    const [petsData, usersCount, todayPulls] = await Promise.all([
+      api('/api/pets'),
+      api('/api/admin/users-count').catch(() => ({ count: '?' })),
+      api('/api/admin/today-pulls').catch(() => ({ count: '?' })),
+    ]);
+    const pets = petsData.pets;
+    const common = pets.filter(p => p.rarity === 'common').length;
+    const rare = pets.filter(p => p.rarity === 'rare').length;
+    const legendary = pets.filter(p => p.rarity === 'legendary').length;
+
+    document.getElementById('overview-stats').innerHTML = `
+      <div class="stat-box"><div class="val">${pets.length}</div><div class="lbl">宠物总数 <span style="color:#4ade80">${common}</span> / <span style="color:#60a5fa">${rare}</span> / <span style="color:#fbbf24">${legendary}</span></div></div>
+      <div class="stat-box"><div class="val">${usersCount.count}</div><div class="lbl">用户总数</div></div>
+      <div class="stat-box"><div class="val">${todayPulls.count}</div><div class="lbl">今日抽卡</div></div>
+      <div class="stat-box gold"><div class="val">-</div><div class="lbl">已收集卡牌</div></div>
+    `;
+    document.getElementById('status').textContent = '✅ 已连接';
+  } catch (e) {
+    document.getElementById('status').textContent = '❌ 连接失败: ' + e.message;
+  }
+}
+
+// ── Pets ──
+async function loadPets() {
+  try {
+    const data = await api('/api/pets');
+    const tbody = document.getElementById('pets-tbody');
+    tbody.innerHTML = '';
+    data.pets.forEach(p => {
+      const tr = document.createElement('tr');
+      const imgUrl = p.image_url ? `${API}${p.image_url}?t=${Date.now()}` : null;
+      const imgHtml = imgUrl
+        ? `<img src="${imgUrl}" style="width:48px;height:48px;object-fit:contain;border-radius:8px"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
+           <span style="font-size:24px;display:none">${p.emoji}</span>`
+        : `<span style="font-size:24px">${p.emoji}</span>`;
+      tr.innerHTML = `
+        <td style="color:rgba(255,255,255,0.3)">${p.id}</td>
+        <td>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+            ${imgHtml}
+            <label style="font-size:11px;color:#a855f7;cursor:pointer">
+              上传图片
+              <input type="file" accept="image/*" style="display:none" data-pet-id="${p.id}" onchange="uploadPetImage(this)">
+            </label>
+          </div>
+        </td>
+        <td>
+          <span id="name-display-${p.id}" style="font-weight:600;color:#fff;cursor:pointer"
+                onclick="enableNameEdit(${p.id})">${p.name}</span>
+          <div id="name-edit-${p.id}" style="display:none">
+            <input type="text" id="name-input-${p.id}" value="${p.name}"
+                   style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;font-size:13px;width:120px">
+            <button class="btn btn-primary" onclick="savePetName(${p.id})" style="margin-left:4px">保存</button>
+            <button class="btn" onclick="cancelNameEdit(${p.id})" style="margin-left:4px;color:rgba(255,255,255,0.5)">取消</button>
+          </div>
+        </td>
+        <td><span class="badge badge-${p.rarity}">${p.rarity}</span></td>
+        <td>
+          <button class="btn btn-danger" onclick="deletePetImage(${p.id})" ${p.image_url ? '' : 'disabled'}>删除图片</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('pets-loading').style.display = 'none';
+    document.getElementById('pets-table-wrap').style.display = 'block';
+  } catch (e) {
+    document.getElementById('pets-loading').innerHTML = `<p style="color:#ef4444">❌ ${e.message}</p>`;
+  }
+}
+
+// ── Admin Pet Edit Functions ──
+
+function enableNameEdit(petId) {
+  document.getElementById('name-display-' + petId).style.display = 'none';
+  document.getElementById('name-edit-' + petId).style.display = 'block';
+  document.getElementById('name-input-' + petId).focus();
+}
+
+function cancelNameEdit(petId) {
+  document.getElementById('name-display-' + petId).style.display = 'inline';
+  document.getElementById('name-edit-' + petId).style.display = 'none';
+}
+
+async function savePetName(petId) {
+  const input = document.getElementById('name-input-' + petId);
+  const newName = input.value.trim();
+  if (!newName) { showToast('名称不能为空'); return; }
+  try {
+    const data = await api('/api/admin/pets/' + petId, {
+      method: 'PUT',
+      body: JSON.stringify({ name: newName }),
+    });
+    document.getElementById('name-display-' + petId).textContent = data.name;
+    cancelNameEdit(petId);
+    showToast('名称已更新');
+  } catch (e) {
+    showToast('保存失败: ' + e.message);
+  }
+}
+
+async function uploadPetImage(input) {
+  const petId = input.dataset.petId;
+  const file = input.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const resp = await fetch(API + '/api/admin/pets/' + petId + '/image', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || '上传失败');
+    }
+    showToast('图片已上传');
+    await loadPets();
+  } catch (e) {
+    showToast('上传失败: ' + e.message);
+  }
+  input.value = '';
+}
+
+async function deletePetImage(petId) {
+  showToast('删除功能待实现 — 上传新图片会替换旧图片');
+}
+
+// ── Users ──
+async function loadUsers() {
+  try {
+    const data = await api('/api/admin/users').catch(() => ({ users: [] }));
+    const users = data.users || [];
+    if (users.length === 0) {
+      document.getElementById('users-loading').innerHTML = `<p style="color:rgba(255,255,255,0.3)">暂无用户列表接口，请通过 <a href="/docs" target="_blank" style="color:#a855f7">/docs</a> 管理</p>`;
+      return;
+    }
+    const tbody = document.getElementById('users-tbody');
+    users.forEach(u => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="color:rgba(255,255,255,0.3)">${u.id}</td>
+        <td style="font-weight:600;color:#fff">${u.username}</td>
+        <td>${u.created_at || '-'}</td>
+        <td class="num">${u.collected ?? '-'}</td>
+        <td><button class="btn btn-danger" onclick="alert('手动删除功能待实现')">删除</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('users-loading').style.display = 'none';
+    document.getElementById('users-table-wrap').style.display = 'block';
+  } catch (e) {
+    document.getElementById('users-loading').innerHTML = `<p style="color:rgba(255,255,255,0.3)">${e.message}</p>`;
+  }
+}
+
+// ── Init ──
+loadOverview();
+loadPets();
+loadUsers();
+</script>
+</body>
+</html>

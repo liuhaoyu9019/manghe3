@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>石器时代 · 我的图鉴</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #0a0a1a;
+  min-height: 100vh;
+  color: #fff;
+}
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  gap: 12px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.header h1 {
+  font-size: 18px;
+  font-weight: 700;
+}
+.header .count {
+  font-size: 13px;
+  color: rgba(255,255,255,0.4);
+  margin-left: auto;
+}
+.back-btn {
+  text-decoration: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 20px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.back-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+/* Stats */
+.stats {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.stat-card {
+  flex: 1;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  text-align: center;
+}
+.stat-card .num {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.stat-card .label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+.stat-card.common .num { color: #4ade80; }
+.stat-card.rare .num { color: #60a5fa; }
+.stat-card.legendary .num { color: #fbbf24; }
+
+/* Grid */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 0 20px 24px;
+}
+.card {
+  position: relative;
+  padding: 20px 12px 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  text-align: center;
+  transition: all 0.3s;
+  cursor: default;
+  overflow: hidden;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.card .emoji {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 8px;
+}
+.card .emoji span {
+  filter: drop-shadow(0 4px 12px rgba(255,255,255,0.1));
+}
+.card .emoji img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(255,255,255,0.1));
+}
+.card .name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.card .rarity-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.card .count-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px);
+}
+
+/* Rarity borders */
+.card.common { border-color: rgba(74, 222, 128, 0.2); }
+.card.common .rarity-label { color: #4ade80; }
+.card.common .count-badge { color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+
+.card.rare { border-color: rgba(96, 165, 250, 0.2); }
+.card.rare .rarity-label { color: #60a5fa; }
+.card.rare .count-badge { color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3); }
+
+.card.legendary {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.06), rgba(251, 191, 36, 0.02));
+}
+.card.legendary .rarity-label { color: #fbbf24; }
+.card.legendary .count-badge { color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+.card.legendary .emoji {
+  filter: drop-shadow(0 0 16px rgba(251, 191, 36, 0.4));
+}
+
+/* Missing */
+.card.missing {
+  opacity: 0.25;
+  border-style: dashed;
+}
+.card.missing .emoji { filter: none; }
+.card.missing:hover { transform: none; }
+
+/* Empty state */
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: rgba(255,255,255,0.3);
+}
+.empty .big-emoji { font-size: 64px; display: block; margin-bottom: 16px; }
+.empty p { font-size: 14px; }
+
+/* Loading */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255,255,255,0.08);
+  border-top-color: #a855f7;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Responsive */
+@media (max-width: 480px) {
+  .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 0 12px 20px; }
+  .card .emoji { font-size: 36px; }
+  .stats { padding: 12px 12px; }
+  .stat-card .num { font-size: 20px; }
+  .header { padding: 12px 14px; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <a href="index.html" class="back-btn">←</a>
+  <h1>📖 宠物图鉴</h1>
+  <span class="count" id="total-count">加载中...</span>
+</div>
+
+<div class="stats">
+  <div class="stat-card common">
+    <div class="num" id="stat-common">-</div>
+    <div class="label">普通</div>
+  </div>
+  <div class="stat-card rare">
+    <div class="num" id="stat-rare">-</div>
+    <div class="label">稀有</div>
+  </div>
+  <div class="stat-card legendary">
+    <div class="num" id="stat-legendary">-</div>
+    <div class="label">传说</div>
+  </div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const API = `${window.location.protocol}//${window.location.hostname}:8000`;
+const TOKEN = localStorage.getItem('token');
+if (!TOKEN) { window.location.href = 'login.html'; }
+
+const RARITY_ORDER = ['legendary', 'rare', 'common'];
+const RARITY_LABELS = { legendary: '传说', rare: '稀有', common: '普通' };
+
+async function load() {
+  const [petsResp, colResp] = await Promise.all([
+    fetch(`${API}/api/pets`),
+    fetch(`${API}/api/collection`, { headers: { 'Authorization': `Bearer ${TOKEN}` } }),
+  ]);
+
+  if (!petsResp.ok || !colResp.ok) {
+    const data = await (petsResp.ok ? colResp : petsResp).json();
+    throw new Error(data.error?.message || '加载失败');
+  }
+
+  const pets = (await petsResp.json()).pets;
+  const col = (await colResp.json()).collection;
+  const colMap = {};
+  col.forEach(c => { colMap[c.pet_id] = c; });
+
+  // Stats
+  const stats = { common: 0, rare: 0, legendary: 0 };
+  Object.values(colMap).forEach(c => {
+    const p = pets.find(x => x.id === c.pet_id);
+    if (p) stats[p.rarity]++;
+  });
+  document.getElementById('stat-common').textContent = stats.common;
+  document.getElementById('stat-rare').textContent = stats.rare;
+  document.getElementById('stat-legendary').textContent = stats.legendary;
+
+  // Total
+  document.getElementById('total-count').textContent = `${Object.keys(colMap).length}/${pets.length}`;
+
+  // Sort: rarity order, then owned first
+  const sorted = [...pets].sort((a, b) => {
+    const ra = RARITY_ORDER.indexOf(a.rarity);
+    const rb = RARITY_ORDER.indexOf(b.rarity);
+    if (ra !== rb) return ra - rb;
+    const ha = colMap[a.id] ? 0 : 1;
+    const hb = colMap[b.id] ? 0 : 1;
+    return ha - hb;
+  });
+
+  const grid = document.getElementById('grid');
+  sorted.forEach(pet => {
+    const c = colMap[pet.id];
+    const div = document.createElement('div');
+    div.className = `card ${pet.rarity}${c ? '' : ' missing'}`;
+    div.innerHTML = `
+      <span class="emoji">
+        ${pet.image_url
+          ? `<img src="${API}${pet.image_url}?t=${Date.now()}" alt="${pet.name}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
+             <span style="display:none">${pet.emoji}</span>`
+          : `<span>${pet.emoji}</span>`}
+      </span>
+      <div class="name">${pet.name}</div>
+      <div class="rarity-label">${RARITY_LABELS[pet.rarity]}</div>
+      ${c ? `<span class="count-badge">×${c.count}</span>` : ''}
+    `;
+    grid.appendChild(div);
+  });
+}
+
+load().catch(err => {
+  if (err.message.includes('过期') || err.message.includes('认证')) {
+    localStorage.removeItem('token');
+    window.location.href = 'login.html';
+  }
+  document.getElementById('grid').innerHTML =
+    `<div class="empty"><span class="big-emoji">😵</span><p>${err.message}</p></div>`;
+});
+</script>
+</body>
+</html>

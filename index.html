@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>石器时代 · 宠物图鉴盲盒</title>
+<script src="three.min.js"></script>
+<script>
+// ── Auth check ──
+const TOKEN = localStorage.getItem('token');
+if (!TOKEN) { window.location.href = 'login.html'; }
+const API = `${window.location.protocol}//${window.location.hostname}:8000`;
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #0a0a1a;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#scene-container {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+/* ---- UI overlay ---- */
+#ui-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  pointer-events: none;
+  padding-bottom: 48px;
+}
+
+#hint {
+  color: rgba(255,255,255,0.5);
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+  transition: opacity 0.5s;
+}
+#hint.hidden { opacity: 0; }
+
+/* ---- HUD ---- */
+#hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  pointer-events: auto;
+}
+#hud-user { color: #fff; font-weight: 600; }
+#hud-pulls {
+  margin-left: auto;
+  background: rgba(255,255,255,0.06);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+#hud-collection, #hud-logout {
+  color: rgba(255,255,255,0.5);
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  font-size: 12px;
+}
+#hud-collection:hover, #hud-logout:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+}
+
+/* ---- Flash ---- */
+#flash {
+  position: fixed;
+  inset: 0;
+  background: white;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 50;
+  transition: opacity 0.08s;
+}
+
+/* ---- Screen shake ---- */
+.screen-shake {
+  animation: shake 0.6s ease-out;
+}
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  8% { transform: translate(-6px, 4px); }
+  16% { transform: translate(5px, -6px); }
+  24% { transform: translate(-4px, 3px); }
+  32% { transform: translate(3px, -4px); }
+  40% { transform: translate(-2px, 2px); }
+  48% { transform: translate(1px, -2px); }
+}
+
+/* ---- Result overlay ---- */
+#result-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+#result-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#result-overlay .backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ---- Pet card ---- */
+.pet-card {
+  position: relative;
+  width: 320px;
+  max-width: 85vw;
+  padding: 40px 32px 32px;
+  border-radius: 24px;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 2px solid rgba(255,255,255,0.1);
+  text-align: center;
+  transform: scale(0);
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+#result-overlay.visible .pet-card {
+  transform: scale(1);
+}
+
+.pet-card .pet-emoji {
+  font-size: 96px;
+  line-height: 1;
+  margin-bottom: 16px;
+  display: block;
+  filter: drop-shadow(0 0 20px rgba(255,255,255,0.3));
+}
+.pet-card .pet-emoji img {
+  display: block;
+  margin: 0 auto;
+  max-width: 120px;
+  max-height: 120px;
+  object-fit: contain;
+}
+
+.pet-card .pet-name {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.pet-card .pet-desc {
+  font-size: 14px;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 16px;
+}
+
+.pet-card .rarity-badge {
+  display: inline-block;
+  padding: 4px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+/* Rarity: common */
+.rarity-common .pet-card {
+  border-color: rgba(74, 222, 128, 0.4);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(74, 222, 128, 0.1);
+}
+.rarity-common .rarity-badge {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+.rarity-common .pet-emoji {
+  filter: drop-shadow(0 0 20px rgba(74, 222, 128, 0.4));
+}
+
+/* Rarity: rare */
+.rarity-rare .pet-card {
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(96, 165, 250, 0.15);
+}
+.rarity-rare .rarity-badge {
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+.rarity-rare .pet-emoji {
+  filter: drop-shadow(0 0 20px rgba(96, 165, 250, 0.4));
+}
+
+/* Rarity: legendary */
+.rarity-legendary .pet-card {
+  border-color: rgba(251, 191, 36, 0.5);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 60px rgba(251, 191, 36, 0.2);
+}
+.rarity-legendary .rarity-badge {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+.rarity-legendary .pet-emoji {
+  filter: drop-shadow(0 0 30px rgba(251, 191, 36, 0.5));
+}
+
+/* Rarity shimmer overlay */
+.rarity-rare .pet-card::after,
+.rarity-legendary .pet-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    rgba(255,255,255,0.05) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  animation: shimmer 2s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* ---- Draw again button ---- */
+#draw-again {
+  pointer-events: auto;
+  padding: 12px 36px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05));
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  letter-spacing: 1px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+#draw-again:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.1));
+  transform: scale(1.05);
+}
+#draw-again:active {
+  transform: scale(0.95);
+}
+
+/* ---- ARIA live ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  border: 0;
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  #result-overlay.visible .pet-card {
+    transition: none;
+    transform: scale(1);
+  }
+  .pet-card::after { animation: none !important; }
+  .screen-shake { animation: none !important; }
+  .pet-card .pet-emoji { transition: none; }
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 480px) {
+  .pet-card { padding: 32px 24px 24px; }
+  .pet-card .pet-emoji { font-size: 72px; }
+  .pet-card .pet-name { font-size: 22px; }
+  #ui-overlay { padding-bottom: 32px; }
+  #hint { font-size: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div id="scene-container"></div>
+
+<div id="flash"></div>
+
+<div id="result-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="backdrop"></div>
+  <div class="pet-card">
+    <span class="pet-emoji" id="pet-emoji"></span>
+    <div class="pet-name" id="pet-name"></div>
+    <div class="pet-desc" id="pet-desc"></div>
+    <span class="rarity-badge" id="rarity-badge"></span>
+    <br>
+    <button id="draw-again">再来一次</button>
+  </div>
+</div>
+
+<div id="ui-overlay">
+  <div id="hud">
+    <span id="hud-user"></span>
+    <span id="hud-pulls"></span>
+    <a href="collection.html" id="hud-collection">📖 图鉴</a>
+    <a href="#" id="hud-logout">退出</a>
+  </div>
+  <div id="hint">👆 点击盲盒开箱</div>
+</div>
+
+<div id="aria-live" class="sr-only" aria-live="polite" role="status"></div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+let PETS = [];
+let state = 'idle'; // idle | exploding | result
+let particles = null;
+let particleData = null;
+let explosionTimer = null;
+let animTime = 0;
+let dailyRemaining = 3;
+
+const RARITY_COLORS = {
+  common:    { hex: 0x4ade80, css: '#4ade80', label: '普通' },
+  rare:      { hex: 0x60a5fa, css: '#60a5fa', label: '稀有' },
+  legendary: { hex: 0xfbbf24, css: '#fbbf24', label: '传说' },
+};
+
+// ============================================================
+//  THREE.JS SETUP
+// ============================================================
+const container = document.getElementById('scene-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a1a);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.5, 5.5);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+container.appendChild(renderer.domElement);
+
+// Lights
+const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+scene.add(ambientLight);
+
+const mainLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+mainLight.position.set(4, 6, 4);
+mainLight.castShadow = true;
+scene.add(mainLight);
+
+const fillLight = new THREE.DirectionalLight(0x8888ff, 0.4);
+fillLight.position.set(-3, 1, -3);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+rimLight.position.set(0, -2, 3);
+scene.add(rimLight);
+
+// ============================================================
+//  STARFIELD
+// ============================================================
+function createStarfield() {
+  const count = 400;
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count * 3; i++) {
+    positions[i] = (Math.random() - 0.5) * 80;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({
+    color: 0x8888ff,
+    size: 0.06,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return new THREE.Points(geo, mat);
+}
+scene.add(createStarfield());
+
+// ============================================================
+//  BOX
+// ============================================================
+let box = null;
+
+function createBoxTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  // Gradient background
+  const grad = ctx.createLinearGradient(0, 0, 512, 512);
+  grad.addColorStop(0, '#6366f1');
+  grad.addColorStop(0.5, '#7c3aed');
+  grad.addColorStop(1, '#a855f7');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Decorative pattern - circles
+  for (let i = 0; i < 30; i++) {
+    ctx.beginPath();
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const r = 3 + Math.random() * 8;
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${0.05 + Math.random() * 0.1})`;
+    ctx.fill();
+  }
+
+  // Stars
+  for (let i = 0; i < 15; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const s = 2 + Math.random() * 3;
+    ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.4})`;
+    ctx.fillRect(x, y, s, s);
+    // Cross shape
+    ctx.fillRect(x - s, y, 1, s);
+    ctx.fillRect(x, y - s, s, 1);
+  }
+
+  // Large question mark
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.font = 'bold 160px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(255,255,255,0.3)';
+  ctx.shadowBlur = 20;
+  ctx.fillText('?', 256, 230);
+
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 50px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('?', 390, 400);
+  ctx.fillText('?', 110, 420);
+
+  // Edge lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20, 20, 472, 472);
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+function buildBox() {
+  const size = 2;
+  const geo = new THREE.BoxGeometry(size, size, size);
+  const tex = createBoxTexture();
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    roughness: 0.3,
+    metalness: 0.6,
+    emissive: new THREE.Color(0x4444aa),
+    emissiveIntensity: 0.05,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.position.y = 0;
+  return mesh;
+}
+
+box = buildBox();
+scene.add(box);
+
+// Ground plane (subtle shadow catcher)
+const groundGeo = new THREE.PlaneGeometry(6, 6);
+const groundMat = new THREE.ShadowMaterial({ opacity: 0.3 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.1;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ============================================================
+//  PARTICLE TEXTURE
+// ============================================================
+const particleCanvas = document.createElement('canvas');
+particleCanvas.width = 32;
+particleCanvas.height = 32;
+const pctx = particleCanvas.getContext('2d');
+const pgrad = pctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+pgrad.addColorStop(0, 'rgba(255,255,255,1)');
+pgrad.addColorStop(0.2, 'rgba(255,255,255,0.9)');
+pgrad.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+pgrad.addColorStop(1, 'rgba(255,255,255,0)');
+pctx.fillStyle = pgrad;
+pctx.fillRect(0, 0, 32, 32);
+const particleTexture = new THREE.CanvasTexture(particleCanvas);
+
+// ============================================================
+//  PARTICLE EXPLOSION
+// ============================================================
+function getParticleCount() {
+  const isMobile = window.innerWidth < 768;
+  return isMobile ? 150 : 300;
+}
+
+function createExplosion(rarity) {
+  const count = getParticleCount();
+  const color = RARITY_COLORS[rarity];
+  const halfSize = 1.0;
+  const isLegendary = rarity === 'legendary';
+  const actualCount = isLegendary ? Math.floor(count * 1.5) : count;
+
+  const positions = new Float32Array(actualCount * 3);
+  const colors = new Float32Array(actualCount * 3);
+  const sizes = new Float32Array(actualCount);
+  const vel = [];
+
+  for (let i = 0; i < actualCount; i++) {
+    // Sample position on cube surface
+    const face = Math.floor(Math.random() * 6);
+    let x, y, z;
+    const u = (Math.random() - 0.5) * 2 * halfSize;
+    const v = (Math.random() - 0.5) * 2 * halfSize;
+    switch (face) {
+      case 0: x = halfSize; y = u; z = v; break;  // right
+      case 1: x = -halfSize; y = u; z = v; break; // left
+      case 2: x = u; y = halfSize; z = v; break;  // top
+      case 3: x = u; y = -halfSize; z = v; break; // bottom
+      case 4: x = u; y = v; z = halfSize; break;  // front
+      default: x = u; y = v; z = -halfSize; break; // back
+    }
+    positions[i*3] = x;
+    positions[i*3+1] = y;
+    positions[i*3+2] = z;
+
+    // Color with random variation
+    const base = new THREE.Color(color.hex);
+    const c = base.clone().multiplyScalar(0.7 + Math.random() * 0.5);
+    colors[i*3] = c.r;
+    colors[i*3+1] = c.g;
+    colors[i*3+2] = c.b;
+
+    sizes[i] = 0.08 + Math.random() * 0.14;
+
+    // Velocity: outward from center + random
+    const dir = new THREE.Vector3(x, y, z);
+    const len = dir.length();
+    if (len > 0.001) dir.divideScalar(len);
+    else dir.set(0, 1, 0);
+
+    const speed = 2.5 + Math.random() * 3.5;
+    vel.push({
+      x: dir.x * speed + (Math.random() - 0.5) * 1.2,
+      y: dir.y * speed + (Math.random() - 0.5) * 1.2,
+      z: dir.z * speed + (Math.random() - 0.5) * 1.2,
+      rotSpeed: (Math.random() - 0.5) * 4,
+    });
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.18,
+    map: particleTexture,
+    vertexColors: true,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+
+  const mesh = new THREE.Points(geo, mat);
+  mesh.position.copy(box.position);
+  mesh.rotation.copy(box.rotation);
+
+  particleData = {
+    mesh,
+    velocities: vel,
+    life: 0,
+    maxLife: 1.8,
+    isLegendary,
+  };
+  particles = mesh;
+  scene.add(mesh);
+}
+
+function updateParticles(dt) {
+  if (!particleData) return;
+  const data = particleData;
+  data.life += dt;
+
+  const progress = data.life / data.maxLife;
+  const pos = data.mesh.geometry.attributes.position.array;
+  const vel = data.velocities;
+  const count = pos.length / 3;
+
+  const rot = data.mesh.rotation;
+  for (let i = 0; i < count; i++) {
+    const i3 = i * 3;
+    // Apply rotation to velocity for spinning effect
+    const vx = vel[i].x;
+    const vy = vel[i].y;
+    const vz = vel[i].z;
+    // Simple rotation around Y
+    const angle = vel[i].rotSpeed * dt;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    vel[i].x = vx * cos - vz * sin;
+    vel[i].z = vz * cos + vx * sin;
+    // Add slight gravity
+    vel[i].y -= 1.5 * dt;
+
+    pos[i3] += vel[i].x * dt;
+    pos[i3+1] += vel[i].y * dt;
+    pos[i3+2] += vel[i].z * dt;
+  }
+  data.mesh.geometry.attributes.position.needsUpdate = true;
+
+  // Fade out
+  const fadeStart = 0.5;
+  if (progress > fadeStart) {
+    const fadeProgress = (progress - fadeStart) / (1 - fadeStart);
+    data.mesh.material.opacity = 1 - fadeProgress;
+  }
+
+  // Remove when done
+  if (progress >= 1) {
+    scene.remove(data.mesh);
+    data.mesh.geometry.dispose();
+    data.mesh.material.dispose();
+    particleData = null;
+    particles = null;
+  }
+}
+
+// ============================================================
+//  RESULT CARD
+// ============================================================
+const resultOverlay = document.getElementById('result-overlay');
+const petEmoji = document.getElementById('pet-emoji');
+const petName = document.getElementById('pet-name');
+const petDesc = document.getElementById('pet-desc');
+const rarityBadge = document.getElementById('rarity-badge');
+const drawAgainBtn = document.getElementById('draw-again');
+const hint = document.getElementById('hint');
+const flash = document.getElementById('flash');
+const ariaLive = document.getElementById('aria-live');
+
+async function pullPet() {
+  const resp = await fetch(`${API}/api/pull`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${TOKEN}` },
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error?.message || '抽卡失败');
+  dailyRemaining = Math.max(0, dailyRemaining - 1);
+  updateHud();
+  return data;
+}
+
+function showResult(data) {
+  const pet = data.pet;
+  state = 'result';
+
+  // Remove rarity class
+  resultOverlay.classList.remove('rarity-common', 'rarity-rare', 'rarity-legendary');
+  document.body.classList.remove('screen-shake');
+
+  // Set card content
+  const r = RARITY_COLORS[pet.rarity];
+  resultOverlay.classList.add('rarity-' + pet.rarity);
+  // Render image with emoji fallback
+  petEmoji.innerHTML = '';
+  if (pet.image_url) {
+    const img = document.createElement('img');
+    img.src = API + pet.image_url + '?t=' + Date.now();
+    img.alt = pet.name;
+    img.onerror = function () {
+      this.style.display = 'none';
+      this.nextElementSibling.style.display = 'block';
+    };
+    petEmoji.appendChild(img);
+    const fallback = document.createElement('span');
+    fallback.textContent = pet.emoji;
+    fallback.style.cssText = 'font-size:96px;display:none;line-height:1';
+    petEmoji.appendChild(fallback);
+  } else {
+    petEmoji.textContent = pet.emoji;
+  }
+  petName.textContent = pet.name;
+  petDesc.textContent = pet.description;
+  rarityBadge.textContent = r.label;
+
+  // Show with delay (let particles fly a bit first)
+  setTimeout(() => {
+    resultOverlay.classList.add('visible');
+    resultOverlay.setAttribute('aria-hidden', 'false');
+    drawAgainBtn.focus();
+
+    ariaLive.textContent = `抽到了 ${pet.name}！${r.label}宠物：${pet.description}`;
+
+    // Screen shake for legendary
+    if (pet.rarity === 'legendary') {
+      document.body.classList.add('screen-shake');
+    }
+  }, 600);
+
+  hint.classList.add('hidden');
+}
+
+function hideResult() {
+  resultOverlay.classList.remove('visible');
+  resultOverlay.setAttribute('aria-hidden', 'true');
+}
+
+// ============================================================
+//  CORE FLOW
+// ============================================================
+async function handleClick() {
+  if (state === 'exploding' || state === 'result') return;
+
+  if (dailyRemaining <= 0) {
+    ariaLive.textContent = '今日抽卡次数已用完！';
+    return;
+  }
+
+  state = 'exploding';
+
+  // Flash
+  flash.style.opacity = '0.7';
+  setTimeout(() => { flash.style.opacity = '0'; }, 100);
+
+  try {
+    const data = await pullPet();
+    const pet = data.pet;
+
+    // Reduced motion: skip animation, show result immediately
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (box) scene.remove(box);
+      showResult(data);
+      return;
+    }
+
+    // Remove box
+    if (box) {
+      scene.remove(box);
+    }
+
+    // Create explosion
+    createExplosion(pet.rarity);
+
+    // Show result after delay
+    explosionTimer = setTimeout(() => {
+      showResult(data);
+    }, 1200);
+  } catch (err) {
+    state = 'idle';
+    ariaLive.textContent = err.message;
+  }
+}
+
+drawAgainBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  resetScene();
+});
+
+function resetScene() {
+  // Clean up explosion
+  if (explosionTimer) {
+    clearTimeout(explosionTimer);
+    explosionTimer = null;
+  }
+  if (particleData) {
+    if (particles) {
+      scene.remove(particles);
+      particles.geometry.dispose();
+      particles.material.dispose();
+    }
+    particleData = null;
+    particles = null;
+  }
+
+  hideResult();
+  document.body.classList.remove('screen-shake');
+
+  // Rebuild box
+  if (box) scene.remove(box);
+  box = buildBox();
+  scene.add(box);
+
+  state = 'idle';
+  hint.classList.remove('hidden');
+}
+
+// ============================================================
+//  PROFILE & HUD
+// ============================================================
+async function loadProfile() {
+  try {
+    const resp = await fetch(`${API}/api/profile`, {
+      headers: { 'Authorization': `Bearer ${TOKEN}` },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message);
+    dailyRemaining = data.daily_pulls_remaining;
+    updateHud(data.username);
+  } catch (err) {
+    if (err.message.includes('过期') || err.message.includes('认证')) {
+      localStorage.removeItem('token');
+      window.location.href = 'login.html';
+    }
+  }
+}
+
+function updateHud(username) {
+  const userEl = document.getElementById('hud-user');
+  const pullsEl = document.getElementById('hud-pulls');
+  if (username) {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    userEl.textContent = '👤 ' + (username || user.username || '');
+  }
+  pullsEl.textContent = `今日剩余: ${dailyRemaining} 次`;
+}
+
+document.getElementById('hud-logout').addEventListener('click', (e) => {
+  e.preventDefault();
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = 'login.html';
+});
+
+// ============================================================
+//  INTERACTION (Raycaster)
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function onPointerDown(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const x = event.clientX ?? event.touches?.[0]?.clientX ?? 0;
+  const y = event.clientY ?? event.touches?.[0]?.clientY ?? 0;
+  pointer.x = ((x - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((y - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(pointer, camera);
+  if (box) {
+    const intersects = raycaster.intersectObject(box);
+    if (intersects.length > 0) {
+      handleClick();
+    }
+  }
+}
+
+renderer.domElement.addEventListener('click', onPointerDown);
+renderer.domElement.addEventListener('touchstart', (e) => {
+  if (state === 'idle') {
+    e.preventDefault();
+    onPointerDown(e);
+  }
+}, { passive: false });
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    if (state === 'idle') {
+      handleClick();
+    } else if (state === 'result' && document.activeElement === drawAgainBtn) {
+      resetScene();
+    }
+  }
+  if (e.key === 'Escape' && state === 'result') {
+    resetScene();
+  }
+});
+
+// ============================================================
+//  RESPONSIVE
+// ============================================================
+function onResize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+
+  // Adjust camera distance for mobile
+  if (w < 480) {
+    camera.position.z = 6;
+    camera.position.y = 0.3;
+  } else {
+    camera.position.z = 5.5;
+    camera.position.y = 0.5;
+  }
+  camera.lookAt(0, 0, 0);
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  animTime += dt;
+
+  // Float & rotate box
+  if (box && state === 'idle') {
+    box.position.y = Math.sin(animTime * 0.8) * 0.15;
+    box.rotation.y += dt * 0.6;
+    box.rotation.x = Math.sin(animTime * 0.3) * 0.04;
+    box.rotation.z = Math.cos(animTime * 0.2) * 0.03;
+  }
+
+  // Update particles
+  if (state === 'exploding') {
+    updateParticles(dt);
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// ============================================================
+//  INIT
+// ============================================================
+(async function init() {
+  try {
+    const resp = await fetch(`${API}/api/pets`);
+    const data = await resp.json();
+    PETS = data.pets;
+  } catch (e) {
+    console.warn('Failed to fetch pets from API, using fallback');
+  }
+  await loadProfile();
+  console.log(`🐣 石器时代 · 宠物图鉴盲盒 — ${PETS.length} 种宠物 · 后端已连接`);
+})().catch(console.warn);
+</script>
+
+</body>
+</html>

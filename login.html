@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>石器时代 · 登录</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #0a0a1a;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+/* Animated background particles */
+#bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+.card {
+  position: relative;
+  z-index: 1;
+  width: 380px;
+  max-width: 90vw;
+  padding: 40px 32px 32px;
+  border-radius: 24px;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1);
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.card h1 {
+  font-size: 22px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.card .subtitle {
+  font-size: 13px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 28px;
+}
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 24px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  padding: 4px;
+}
+.tab {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.3s;
+}
+.tab.active {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+.form { display: flex; flex-direction: column; gap: 16px; }
+.form.hidden { display: none; }
+.input-group {
+  text-align: left;
+}
+.input-group label {
+  display: block;
+  font-size: 12px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+}
+.input-group input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.input-group input:focus {
+  border-color: rgba(147, 51, 234, 0.5);
+}
+.input-group input::placeholder {
+  color: rgba(255,255,255,0.2);
+}
+.btn {
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  letter-spacing: 1px;
+}
+.btn-primary {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff;
+}
+.btn-primary:hover { transform: scale(1.02); opacity: 0.9; }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+.error-msg {
+  font-size: 13px;
+  color: #f87171;
+  min-height: 20px;
+  line-height: 20px;
+}
+.loading-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+
+<div class="card">
+  <h1>🗿 宠物图鉴盲盒</h1>
+  <p class="subtitle">石器时代 · 收集你的宠物伙伴</p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="login">登录</button>
+    <button class="tab" data-tab="register">注册</button>
+  </div>
+
+  <!-- Login -->
+  <form class="form" id="login-form" autocomplete="off">
+    <div class="input-group">
+      <label>用户名</label>
+      <input type="text" id="login-username" placeholder="输入用户名" required minlength="2">
+    </div>
+    <div class="input-group">
+      <label>密码</label>
+      <input type="password" id="login-password" placeholder="输入密码" required minlength="4">
+    </div>
+    <div class="error-msg" id="login-error"></div>
+    <button type="submit" class="btn btn-primary" id="login-btn">登录</button>
+  </form>
+
+  <!-- Register -->
+  <form class="form hidden" id="register-form" autocomplete="off">
+    <div class="input-group">
+      <label>用户名</label>
+      <input type="text" id="register-username" placeholder="2~20个字符" required minlength="2" maxlength="20">
+    </div>
+    <div class="input-group">
+      <label>密码</label>
+      <input type="password" id="register-password" placeholder="至少4个字符" required minlength="4" maxlength="64">
+    </div>
+    <div class="error-msg" id="register-error"></div>
+    <button type="submit" class="btn btn-primary" id="register-btn">注册</button>
+  </form>
+</div>
+
+<script>
+const API = `${window.location.protocol}//${window.location.hostname}:8000`;
+
+// ── Tab switching ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.form').forEach(f => f.classList.add('hidden'));
+    document.getElementById(tab.dataset.tab + '-form').classList.remove('hidden');
+    document.getElementById('login-error').textContent = '';
+    document.getElementById('register-error').textContent = '';
+  });
+});
+
+// ── Login ──
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span>登录中...';
+  errEl.textContent = '';
+
+  try {
+    const resp = await fetch(`${API}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('login-username').value.trim(),
+        password: document.getElementById('login-password').value,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message || '登录失败');
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    window.location.href = 'index.html';
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登录';
+  }
+});
+
+// ── Register ──
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('register-btn');
+  const errEl = document.getElementById('register-error');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span>注册中...';
+  errEl.textContent = '';
+
+  try {
+    const resp = await fetch(`${API}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('register-username').value.trim(),
+        password: document.getElementById('register-password').value,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message || '注册失败');
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    window.location.href = 'index.html';
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '注册';
+  }
+});
+
+// ── Background particles ──
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const particles = Array.from({ length: 60 }, () => ({
+  x: Math.random() * canvas.width,
+  y: Math.random() * canvas.height,
+  r: 1 + Math.random() * 2,
+  dx: (Math.random() - 0.5) * 0.3,
+  dy: (Math.random() - 0.5) * 0.3,
+  o: 0.2 + Math.random() * 0.3,
+}));
+function drawParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles.forEach(p => {
+    p.x += p.dx; p.y += p.dy;
+    if (p.x < 0) p.x = canvas.width;
+    if (p.x > canvas.width) p.x = 0;
+    if (p.y < 0) p.y = canvas.height;
+    if (p.y > canvas.height) p.y = 0;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(136, 136, 255, ${p.o})`;
+    ctx.fill();
+  });
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+window.addEventListener('resize', () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+// Already logged in?
+if (localStorage.getItem('token')) {
+  window.location.href = 'index.html';
+}
+</script>
+</body>
+</html>
