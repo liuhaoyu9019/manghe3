@@ -194,6 +194,36 @@ body {
   .stat-card .num { font-size: 20px; }
   .header { padding: 12px 14px; }
 }
+
+/* Lightbox */
+.lightbox {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.85);
+  display: none; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+  cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 90vw; max-height: 90vh;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  object-fit: contain;
+  cursor: default;
+}
+.lightbox .lb-close {
+  position: absolute; top: 20px; right: 24px;
+  font-size: 28px; color: rgba(255,255,255,0.6);
+  border: none; background: none; cursor: pointer;
+  padding: 8px; transition: color 0.2s;
+}
+.lightbox .lb-close:hover { color: #fff; }
+.lightbox .lb-name {
+  position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+  font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.8);
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.card .emoji img { cursor: zoom-in; }
 </style>
 </head>
 <body>
@@ -219,6 +249,12 @@ body {
 </div>
 
 <div class="grid" id="grid"></div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <img id="lb-img" src="" alt="">
+  <div class="lb-name" id="lb-name"></div>
+</div>
 
 <script>
 const API = `${window.location.protocol}//${window.location.hostname}:8000`;
@@ -276,7 +312,7 @@ async function load() {
       <span class="emoji">
         ${pet.image_url
           ? `<img src="${API}${pet.image_url}?t=${Date.now()}" alt="${pet.name}"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
+               onerror="this.style.display='none';this.nextElementSibling.style.display='block'" onclick="openLightbox(this, '${pet.name}')" />
              <span style="display:none">${pet.emoji}</span>`
           : `<span>${pet.emoji}</span>`}
       </span>
@@ -287,6 +323,24 @@ async function load() {
     grid.appendChild(div);
   });
 }
+
+function openLightbox(imgEl, name) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lb-img').src = imgEl.src;
+  document.getElementById('lb-name').textContent = name;
+  lb.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+});
 
 load().catch(err => {
   if (err.message.includes('过期') || err.message.includes('认证')) {
