@@ -195,34 +195,90 @@ body {
   .header { padding: 12px 14px; }
 }
 
-/* Lightbox */
-.lightbox {
+/* Detail Card (lightbox) */
+.detail-overlay {
   position: fixed; inset: 0; z-index: 1000;
-  background: rgba(0,0,0,0.85);
+  background: rgba(0,0,0,0.5);
   display: none; align-items: center; justify-content: center;
-  backdrop-filter: blur(8px);
-  cursor: zoom-out;
+  backdrop-filter: blur(4px);
+  padding: 20px;
 }
-.lightbox.open { display: flex; }
-.lightbox img {
-  max-width: 90vw; max-height: 90vh;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+.detail-overlay.open { display: flex; }
+
+.detail-card {
+  background: linear-gradient(145deg, #1a1a2e, #16213e);
+  border-radius: 24px;
+  max-width: 420px; width: 100%;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  animation: cardIn 0.25s ease-out;
+  position: relative;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.detail-card .dc-close {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  width: 32px; height: 32px; border-radius: 50%;
+  border: none; background: rgba(0,0,0,0.4);
+  color: rgba(255,255,255,0.7); font-size: 18px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.detail-card .dc-close:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+.detail-card .dc-image-wrap {
+  width: 100%; aspect-ratio: 1;
+  background: rgba(255,255,255,0.03);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.detail-card .dc-image-wrap img {
+  max-width: 100%; max-height: 100%;
   object-fit: contain;
-  cursor: default;
+  border-radius: 12px;
 }
-.lightbox .lb-close {
-  position: absolute; top: 20px; right: 24px;
-  font-size: 28px; color: rgba(255,255,255,0.6);
-  border: none; background: none; cursor: pointer;
-  padding: 8px; transition: color 0.2s;
+.detail-card .dc-info {
+  padding: 20px 24px 24px;
 }
-.lightbox .lb-close:hover { color: #fff; }
-.lightbox .lb-name {
-  position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-  font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.8);
-  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+.detail-card .dc-name-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 8px;
 }
+.detail-card .dc-name-row .emoji {
+  font-size: 32px; line-height: 1;
+}
+.detail-card .dc-name-row .name {
+  font-size: 22px; font-weight: 700; color: #fff;
+}
+.detail-card .dc-rarity {
+  display: inline-block;
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+.detail-card .dc-rarity.common { background: rgba(74,222,128,0.15); color: #4ade80; }
+.detail-card .dc-rarity.rare { background: rgba(96,165,250,0.15); color: #60a5fa; }
+.detail-card .dc-rarity.legendary { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.detail-card .dc-desc {
+  font-size: 14px; line-height: 1.6;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 16px;
+}
+.detail-card .dc-count {
+  font-size: 13px; color: rgba(255,255,255,0.3);
+}
+.detail-card .dc-count span {
+  font-weight: 700; color: rgba(255,255,255,0.7);
+}
+
+/* Rarity border glow */
+.detail-card.common { border: 1px solid rgba(74,222,128,0.2); }
+.detail-card.rare { border: 1px solid rgba(96,165,250,0.2); }
+.detail-card.legendary { border: 1px solid rgba(251,191,36,0.3); }
+
 .card .emoji img { cursor: zoom-in; }
 </style>
 </head>
@@ -250,10 +306,22 @@ body {
 
 <div class="grid" id="grid"></div>
 
-<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
-  <button class="lb-close" onclick="closeLightbox()">✕</button>
-  <img id="lb-img" src="" alt="">
-  <div class="lb-name" id="lb-name"></div>
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail(event)">
+  <div class="detail-card" id="detailCard">
+    <button class="dc-close" onclick="closeDetail()">✕</button>
+    <div class="dc-image-wrap">
+      <img id="dc-img" src="" alt="">
+    </div>
+    <div class="dc-info">
+      <div class="dc-name-row">
+        <span class="emoji" id="dc-emoji"></span>
+        <span class="name" id="dc-name"></span>
+      </div>
+      <div class="dc-rarity" id="dc-rarity"></div>
+      <div class="dc-desc" id="dc-desc"></div>
+      <div class="dc-count">拥有数量: <span id="dc-count"></span></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -312,7 +380,7 @@ async function load() {
       <span class="emoji">
         ${pet.image_url
           ? `<img src="${API}${pet.image_url}?t=${Date.now()}" alt="${pet.name}"
-               onerror="this.style.display='none';this.nextElementSibling.style.display='block'" onclick="openLightbox(this, '${pet.name}')" />
+               onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
              <span style="display:none">${pet.emoji}</span>`
           : `<span>${pet.emoji}</span>`}
       </span>
@@ -321,25 +389,35 @@ async function load() {
       ${c ? `<span class="count-badge">×${c.count}</span>` : ''}
     `;
     grid.appendChild(div);
+    if (pet.image_url && c) {
+      div.addEventListener('click', function() { openDetail(pet, c.count); });
+    }
   });
 }
 
-function openLightbox(imgEl, name) {
-  const lb = document.getElementById('lightbox');
-  document.getElementById('lb-img').src = imgEl.src;
-  document.getElementById('lb-name').textContent = name;
-  lb.classList.add('open');
+function openDetail(pet, count) {
+  const overlay = document.getElementById('detailOverlay');
+  const card = document.getElementById('detailCard');
+  document.getElementById('dc-img').src = `${API}${pet.image_url}?t=${Date.now()}`;
+  document.getElementById('dc-name').textContent = pet.name;
+  document.getElementById('dc-emoji').textContent = pet.emoji;
+  document.getElementById('dc-rarity').textContent = RARITY_LABELS[pet.rarity];
+  document.getElementById('dc-rarity').className = 'dc-rarity ' + pet.rarity;
+  document.getElementById('dc-desc').textContent = pet.description;
+  document.getElementById('dc-count').textContent = count;
+  card.className = 'detail-card ' + pet.rarity;
+  overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 }
 
-function closeLightbox(e) {
+function closeDetail(e) {
   if (e && e.target !== e.currentTarget) return;
-  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('detailOverlay').classList.remove('open');
   document.body.style.overflow = '';
 }
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'Escape') closeDetail();
 });
 
 load().catch(err => {
