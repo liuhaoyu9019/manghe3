@@ -24,6 +24,15 @@ UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads",
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 MAX_IMAGE_SIZE = (512, 512)
 
+# MIME types for serving images
+IMAGE_MIME = {
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
+
 app = FastAPI(title="石器时代 · 宠物图鉴盲盒", version="1.0.0")
 
 app.add_middleware(
@@ -320,22 +329,30 @@ def admin_upload_pet_image(pet_id: int, file: UploadFile = File(...)):
         db.close()
         raise HTTPException(400, detail={"code": "INVALID_IMAGE", "message": "无法识别该图片文件"})
 
-    img = Image.open(io.BytesIO(contents))
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGBA")
-    else:
-        img = img.convert("RGB")
-    img.thumbnail(MAX_IMAGE_SIZE, Image.LANCZOS)
-
-    output_filename = f"{pet_id}.webp"
-    output_path = os.path.join(UPLOAD_DIR, output_filename)
-
     # Clean up old files for this pet
     for old_file in os.listdir(UPLOAD_DIR):
         if old_file.startswith(f"{pet_id}."):
             os.remove(os.path.join(UPLOAD_DIR, old_file))
 
-    img.save(output_path, "WEBP", quality=85)
+    if ext == ".gif":
+        # Save GIF as-is to preserve animation frames
+        output_filename = f"{pet_id}.gif"
+        output_path = os.path.join(UPLOAD_DIR, output_filename)
+        with open(output_path, "wb") as f:
+            f.write(contents)
+    else:
+        # Convert non-GIF to WEBP
+        img = Image.open(io.BytesIO(contents))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGBA")
+        else:
+            img = img.convert("RGB")
+        img.thumbnail(MAX_IMAGE_SIZE, Image.LANCZOS)
+
+        output_filename = f"{pet_id}.webp"
+        output_path = os.path.join(UPLOAD_DIR, output_filename)
+        img.save(output_path, "WEBP", quality=85)
+
     db.execute(
         "UPDATE pets SET image_path = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
         (output_path, pet_id),
@@ -363,7 +380,9 @@ def serve_pet_image(filename: str):
     file_path = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(404)
-    return FileResponse(file_path, media_type="image/webp")
+    ext = os.path.splitext(filename)[1].lower()
+    mime = IMAGE_MIME.get(ext, "image/webp")
+    return FileResponse(file_path, media_type=mime)
 
 
 # ── Serve frontend static files ──
