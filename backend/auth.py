@@ -1,10 +1,11 @@
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
 
-JWT_SECRET = secrets.token_hex(32)
+JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
 JWT_ALGO = "HS256"
 JWT_EXPIRE_DAYS = 30
 

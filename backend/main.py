@@ -94,16 +94,18 @@ def _db_pet_to_dict(row) -> dict:
 @app.post("/api/register", response_model=AuthResponse)
 def register(body: RegisterRequest):
     db = get_db()
-    existing = db.execute("SELECT id FROM users WHERE username = ?", (body.username,)).fetchone()
+    existing = db.execute("SELECT id FROM users WHERE username = %s", (body.username,)).fetchone()
     if existing:
         db.close()
         raise HTTPException(409, detail={"code": "USERNAME_TAKEN", "message": "用户名已被注册"})
 
     pw_hash = hash_password(body.password)
-    cur = db.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                     (body.username, pw_hash))
+    result = db.execute(
+        "INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id",
+        (body.username, pw_hash),
+    )
     db.commit()
-    user_id = cur.lastrowid
+    user_id = result.fetchone()["id"]
     token = create_token(user_id)
     db.close()
     return {"token": token, "user": {"id": user_id, "username": body.username}}
@@ -112,7 +114,7 @@ def register(body: RegisterRequest):
 @app.post("/api/login", response_model=AuthResponse)
 def login(body: LoginRequest):
     db = get_db()
-    row = db.execute("SELECT id, username, password_hash FROM users WHERE username = ?",
+    row = db.execute("SELECT id, username, password_hash FROM users WHERE username = %s",
                      (body.username,)).fetchone()
     if not row or not verify_password(body.password, row["password_hash"]):
         db.close()
@@ -128,21 +130,21 @@ def login(body: LoginRequest):
 @app.get("/api/profile", response_model=ProfileResponse)
 def profile(user_id: int = Depends(get_current_user)):
     db = get_db()
-    row = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    row = db.execute("SELECT username FROM users WHERE id = %s", (user_id,)).fetchone()
     if not row:
         db.close()
         raise HTTPException(404)
 
     today = _today_utc()
     dp = db.execute(
-        "SELECT pull_count FROM daily_pulls WHERE user_id = ? AND pull_date = ?",
+        "SELECT pull_count FROM daily_pulls WHERE user_id = %s AND pull_date = %s",
         (user_id, today),
     ).fetchone()
     pulls_today = dp["pull_count"] if dp else 0
     remaining = max(0, DAILY_LIMIT - pulls_today)
 
     total = db.execute(
-        "SELECT SUM(count) as total FROM collection WHERE user_id = ?", (user_id,)
+        "SELECT SUM(count) as total FROM collection WHERE user_id = %s", (user_id,)
     ).fetchone()["total"] or 0
 
     db.close()
@@ -158,7 +160,7 @@ def pull(user_id: int = Depends(get_current_user)):
 
     # Check / update daily limit
     dp = db.execute(
-        "SELECT pull_count FROM daily_pulls WHERE user_id = ? AND pull_date = ?",
+        "SELECT pull_count FROM daily_pulls WHERE user_id = %s AND pull_date = %s",
         (user_id, today),
     ).fetchone()
 
@@ -168,10 +170,10 @@ def pull(user_id: int = Depends(get_current_user)):
         raise HTTPException(429, detail={"code": "DAILY_LIMIT", "message": "今日抽卡次数已用完"})
 
     if dp:
-        db.execute("UPDATE daily_pulls SET pull_count = pull_count + 1 WHERE user_id = ? AND pull_date = ?",
+        db.execute("UPDATE daily_pulls SET pull_count = pull_count + 1 WHERE user_id = %s AND pull_date = %s",
                    (user_id, today))
     else:
-        db.execute("INSERT INTO daily_pulls (user_id, pull_date, pull_count) VALUES (?, ?, 1)",
+        db.execute("INSERT INTO daily_pulls (user_id, pull_date, pull_count) VALUES (%s, %s, 1)",
                    (user_id, today))
 
     # Fetch all pets from DB for weighted random selection
@@ -181,16 +183,16 @@ def pull(user_id: int = Depends(get_current_user)):
 
     # Upsert collection
     existing = db.execute(
-        "SELECT count FROM collection WHERE user_id = ? AND pet_id = ?",
+        "SELECT count FROM collection WHERE user_id = %s AND pet_id = %s",
         (user_id, pet["id"]),
     ).fetchone()
 
     if existing:
-        db.execute("UPDATE collection SET count = count + 1 WHERE user_id = ? AND pet_id = ?",
+        db.execute("UPDATE collection SET count = count + 1 WHERE user_id = %s AND pet_id = %s",
                    (user_id, pet["id"]))
         new_count = existing["count"] + 1
     else:
-        db.execute("INSERT INTO collection (user_id, pet_id, count) VALUES (?, ?, 1)",
+        db.execute("INSERT INTO collection (user_id, pet_id, count) VALUES (%s, %s, 1)",
                    (user_id, pet["id"]))
         new_count = 1
 
@@ -219,7 +221,7 @@ def get_collection(user_id: int = Depends(get_current_user)):
         SELECT c.pet_id, c.count, p.name, p.rarity, p.emoji, p.image_path
         FROM collection c
         JOIN pets p ON p.id = c.pet_id
-        WHERE c.user_id = ?
+        WHERE c.user_id = %s
         ORDER BY c.first_obtained_at DESC
     """, (user_id,)).fetchall()
     db.close()
@@ -253,7 +255,7 @@ def admin_today_pulls():
     db = get_db()
     today = _today_utc()
     row = db.execute(
-        "SELECT COALESCE(SUM(pull_count), 0) as count FROM daily_pulls WHERE pull_date = ?",
+        "SELECT COALESCE(SUM(pull_count), 0) as count FROM daily_pulls WHERE pull_date = %s",
         (today,),
     ).fetchone()
     db.close()
@@ -271,7 +273,7 @@ def admin_users():
     """).fetchall()
     db.close()
     return {"users": [AdminUserItem(id=r["id"], username=r["username"],
-                                    created_at=r["created_at"], collected=r["collected"]) for r in rows]}
+                                    created_at=str(r["created_at"]), collected=r["collected"]) for r in rows]}
 
 
 # ── Admin Pet CRUD ──
@@ -279,17 +281,17 @@ def admin_users():
 @app.put("/api/admin/pets/{pet_id}", response_model=Pet)
 def admin_update_pet(pet_id: int, body: PetUpdateRequest):
     db = get_db()
-    existing = db.execute("SELECT * FROM pets WHERE id = ?", (pet_id,)).fetchone()
+    existing = db.execute("SELECT * FROM pets WHERE id = %s", (pet_id,)).fetchone()
     if not existing:
         db.close()
         raise HTTPException(404, detail={"code": "PET_NOT_FOUND", "message": "宠物不存在"})
 
     db.execute(
-        "UPDATE pets SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        "UPDATE pets SET name = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
         (body.name, pet_id),
     )
     db.commit()
-    row = db.execute("SELECT * FROM pets WHERE id = ?", (pet_id,)).fetchone()
+    row = db.execute("SELECT * FROM pets WHERE id = %s", (pet_id,)).fetchone()
     db.close()
     return _db_pet_to_dict(row)
 
@@ -304,7 +306,7 @@ def admin_upload_pet_image(pet_id: int, file: UploadFile = File(...)):
         })
 
     db = get_db()
-    existing = db.execute("SELECT id FROM pets WHERE id = ?", (pet_id,)).fetchone()
+    existing = db.execute("SELECT id FROM pets WHERE id = %s", (pet_id,)).fetchone()
     if not existing:
         db.close()
         raise HTTPException(404, detail={"code": "PET_NOT_FOUND", "message": "宠物不存在"})
@@ -334,7 +336,7 @@ def admin_upload_pet_image(pet_id: int, file: UploadFile = File(...)):
 
     img.save(output_path, "WEBP", quality=85)
     db.execute(
-        "UPDATE pets SET image_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        "UPDATE pets SET image_path = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
         (output_path, pet_id),
     )
     db.commit()
@@ -346,7 +348,7 @@ def admin_upload_pet_image(pet_id: int, file: UploadFile = File(...)):
 @app.get("/api/admin/pets/{pet_id}", response_model=Pet)
 def admin_get_pet(pet_id: int):
     db = get_db()
-    row = db.execute("SELECT * FROM pets WHERE id = ?", (pet_id,)).fetchone()
+    row = db.execute("SELECT * FROM pets WHERE id = %s", (pet_id,)).fetchone()
     db.close()
     if not row:
         raise HTTPException(404)

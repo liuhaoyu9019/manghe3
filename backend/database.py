@@ -1,46 +1,83 @@
-import sqlite3
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-DB_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(DB_DIR, "manghe.db")
+DATABASE_URL = os.getenv("DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5432/manghe")
+
+
+class QueryResult:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        return dict(row) if row else None
+
+    def fetchall(self):
+        return [dict(row) for row in self._cursor.fetchall()]
+
+    @property
+    def lastrowid(self):
+        row = self._cursor.fetchone()
+        return row[0] if row else None
+
+
+class DbConnection:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def execute(self, sql, params=None):
+        cur = self.conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(sql, params or ())
+        return QueryResult(cur)
+
+    def executescript(self, sql):
+        cur = self.conn.cursor()
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                cur.execute(stmt + ";")
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    conn = psycopg2.connect(DATABASE_URL)
+    return DbConnection(conn)
 
 
 def init_db():
-    conn = get_db()
-    conn.executescript("""
+    db = get_db()
+    db.executescript("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(20) UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS collection (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             pet_id INTEGER NOT NULL,
             count INTEGER DEFAULT 1,
             first_obtained_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id),
             UNIQUE(user_id, pet_id)
         );
 
         CREATE TABLE IF NOT EXISTS daily_pulls (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            pull_date TEXT NOT NULL,
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            pull_date DATE NOT NULL,
             pull_count INTEGER DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users(id),
             UNIQUE(user_id, pull_date)
         );
+
         CREATE TABLE IF NOT EXISTS pets (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
@@ -51,17 +88,17 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-    conn.commit()
+    db.commit()
 
-    # Seed pets from SEED_PETS if the table is empty (first run)
-    count = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
-    if count == 0:
+    # Seed pets from SEED_PETS if the table is empty
+    row = db.execute("SELECT COUNT(*) as cnt FROM pets").fetchone()
+    if row and row["cnt"] == 0:
         from pet_data import SEED_PETS
         for p in SEED_PETS:
-            conn.execute(
-                "INSERT INTO pets (id, name, emoji, rarity, description) VALUES (?, ?, ?, ?, ?)",
+            db.execute(
+                "INSERT INTO pets (id, name, emoji, rarity, description) VALUES (%s, %s, %s, %s, %s)",
                 (p["id"], p["name"], p["emoji"], p["rarity"], p["description"]),
             )
-        conn.commit()
+        db.commit()
 
-    conn.close()
+    db.close()

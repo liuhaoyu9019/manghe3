@@ -1,0 +1,6 @@
+fastapi==0.109.2
+uvicorn[standard]
+pyjwt
+bcrypt
+Pillow
+psycopg2-binary
